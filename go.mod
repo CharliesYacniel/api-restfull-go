@@ -2,4 +2,8 @@ module github.com/charliesyacniel/go-chi-restfull-api
 
 go 1.16
 
-require github.com/go-chi/chi v1.5.4
+require (
+	github.com/dgraph-io/dgo/v200 v200.0.0-20210401091508-95bfd74de60e // indirect
+	github.com/go-chi/chi v1.5.4
+	google.golang.org/grpc v1.42.0 // indirect
+)
