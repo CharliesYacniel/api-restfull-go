@@ -16,7 +16,7 @@ func main() {
 		port = fromEnv
 	}
 
-	log.Printf("API KENIA en LINEA = http://localhost:%s", port)
+	log.Printf("API GO en LINEA = http://localhost:%s", port)
 
 	r := chi.NewRouter()
 

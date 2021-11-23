@@ -20,6 +20,14 @@ import (
 
 type programsResource struct{}
 type CancelFunc func()
+type Programs struct {
+	Uid          string `json:"uid,omitempty"`
+	NameProgram  string `json:"nameProgram,omitempty"`
+	CodeTex      string `json:"codeText,omitempty"`
+	Language     string `json:"language,omitempty"`
+	User         string `json:"user,omitempty"`
+	CodeCompiled string `json:"codeCompiled,omitempty"`
+}
 
 type responseData struct {
 	Status  bool   `json:"Status"`
@@ -34,6 +42,7 @@ func (rs programsResource) Routes() chi.Router {
 	r.Get("/getAll", rs.GetAll)
 	r.Get("/getById", rs.GetById)
 	r.Get("/create", rs.Create)
+	r.Get("/update", rs.Update)
 	r.Get("/execute", rs.Execute)
 
 	return r
@@ -43,20 +52,14 @@ func (rs programsResource) Routes() chi.Router {
 func (rs programsResource) GetAll(w http.ResponseWriter, r *http.Request) {
 	dg, cancel := getDgraphClient()
 	defer cancel()
-	type Programs struct {
-		Uid          string `json:"uid,omitempty"`
-		Name         string `json:"name,omitempty"`
-		Codetex      string `json:"codetext,omitempty"`
-		Language     string `json:"language,omitempty"`
-		User         string `json:"user,omitempty"`
-		CodeCompiled string `json:"codecompiled,omitempty"`
-	}
+
 	ctx := context.Background()
 
 	variables := make(map[string]string)
 	q := `
 	{
-		getAllPrograms(func: has(nameProgram)) {
+		getAll(func: has(nameProgram)) {
+		  uid
 		  nameProgram
 		  user
 		  language
@@ -79,13 +82,122 @@ func (rs programsResource) GetAll(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(resp.Json))
 }
+
 func (rs programsResource) GetById(w http.ResponseWriter, r *http.Request) {
+
+	dg, cancel := getDgraphClient()
+	defer cancel()
+
+	ctx := context.Background()
+
+	variables := make(map[string]string)
+	q := `
+	{
+		getByUid(func: uid("0x9c53")) {
+		  uid
+		  nameProgram
+		  user
+		  language
+		  codeTex
+		  codeCompiled
+		}
+	  }
+	   `
+	resp, err := dg.NewTxn().QueryWithVars(ctx, q, variables)
+	if err != nil {
+		log.Fatal(err)
+	}
+	type Root struct {
+		Me []Programs `json:"me"`
+	}
+	err = json.Unmarshal(resp.Json, &r)
+	if err != nil {
+		log.Fatal(err)
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte("Obtener por ID progra,"))
+	w.Write([]byte(resp.Json))
 }
+
 func (rs programsResource) Create(w http.ResponseWriter, r *http.Request) {
+
+	dg, cancel := getDgraphClient()
+	defer cancel()
+	p := Programs{
+		Uid:          "_:prog",
+		NameProgram:  "Program two",
+		CodeTex:      "import sys i=0 while i<10: print ('Hello') sys.stdout.flush() i=i+1 # time.sleep(1) n1 = 3 n2 = 10 suma = n1+n2 print('La suma es: ', suma)",
+		Language:     "tasdasdrue",
+		User:         "tasdasdrue",
+		CodeCompiled: "tasdasdrue",
+	}
+
+	op := &api.Operation{}
+	op.Schema = `
+		nameProgram: string .
+		user: string .
+		language: string .
+		codeTex: string .
+		codeCompiled: string .
+	`
+
+	ctx := context.Background()
+	if err := dg.Alter(ctx, op); err != nil {
+		log.Fatal(err)
+	}
+
+	mu := &api.Mutation{
+		CommitNow: true,
+	}
+	pb, err := json.Marshal(p)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mu.SetJson = pb
+	response, err := dg.NewTxn().Mutate(ctx, mu)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Assigned uids for nodes which were created would be returned in the response.Uids map.
+	variables := map[string]string{"$id1": response.Uids["prog"]}
+	q := `query Create($id1: string){
+		create(func: uid($id1)) {
+			uid
+			nameProgram
+			user
+			language
+			codeTex
+			codeCompiled
+		}
+	}`
+
+	resp, err := dg.NewTxn().QueryWithVars(ctx, q, variables)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	type Root struct {
+		Me []Programs `json:"me"`
+	}
+
+	// var r Root
+	err = json.Unmarshal(resp.Json, &r)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	out, _ := json.MarshalIndent(r, "", "\t")
+	fmt.Printf("%s\n", out)
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte("CREATE progra,"))
+	w.Write([]byte(resp.Json))
+}
+
+func (rs programsResource) Update(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+	// w.Write([]byte(resp.Json))
+	w.Write([]byte("uodate"))
 }
 
 func (rs programsResource) Execute(w http.ResponseWriter, r *http.Request) {
@@ -131,44 +243,4 @@ func getDgraphClient() (*dgo.Dgraph, CancelFunc) {
 			log.Printf("Error while closing connection:%v", err)
 		}
 	}
-}
-func getAllPrograms() {
-	dg, cancel := getDgraphClient()
-	defer cancel()
-	type Programs struct {
-		Uid          string `json:"uid,omitempty"`
-		Name         string `json:"name,omitempty"`
-		Codetex      string `json:"codetext,omitempty"`
-		Language     string `json:"language,omitempty"`
-		User         string `json:"user,omitempty"`
-		CodeCompiled string `json:"codecompiled,omitempty"`
-	}
-	ctx := context.Background()
-
-	variables := make(map[string]string)
-	q := `
-	{
-		getAllPrograms(func: has(nameProgram)) {
-		  nameProgram
-		  user
-		  language
-		  codeTex
-		  codeCompiled
-		}
-	  }
-	   `
-	resp, err := dg.NewTxn().QueryWithVars(ctx, q, variables)
-	if err != nil {
-		log.Fatal(err)
-	}
-	type Root struct {
-		Me []Programs `json:"me"`
-	}
-	var r Root
-	err = json.Unmarshal(resp.Json, &r)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(string(resp.Json))
-
 }
