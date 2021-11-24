@@ -23,17 +23,17 @@ type CancelFunc func()
 type Programs struct {
 	Uid          string `json:"uid,omitempty"`
 	NameProgram  string `json:"nameProgram,omitempty"`
-	CodeTex      string `json:"codeText,omitempty"`
+	CodeTex      string `json:"codeTex,omitempty"`
 	Language     string `json:"language,omitempty"`
 	User         string `json:"user,omitempty"`
 	CodeCompiled string `json:"codeCompiled,omitempty"`
 }
 
 type responseData struct {
-	Status  bool   `json:"Status"`
-	Code    int    `json:"Code"`
-	Object  string `json:"Object"`
-	Message string `json:"Message"`
+	Status  bool   `json:"status"`
+	Code    int    `json:"code"`
+	Obj     string `json:"obj"`
+	Message string `json:"message"`
 }
 
 func (rs programsResource) Routes() chi.Router {
@@ -41,9 +41,9 @@ func (rs programsResource) Routes() chi.Router {
 
 	r.Get("/getAll", rs.GetAll)
 	r.Get("/getById", rs.GetById)
-	r.Get("/create", rs.Create)
-	r.Get("/update", rs.Update)
-	r.Get("/execute", rs.Execute)
+	r.Post("/create", rs.Create)
+	r.Put("/update", rs.Update)
+	r.Post("/execute", rs.Execute)
 
 	return r
 }
@@ -119,16 +119,26 @@ func (rs programsResource) GetById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rs programsResource) Create(w http.ResponseWriter, r *http.Request) {
-
 	dg, cancel := getDgraphClient()
 	defer cancel()
+
+	r.ParseForm()
+	nameProgram := r.Form.Get("nameProgram")
+	user := r.Form.Get("user")
+	language := r.Form.Get("language")
+	codeTex := r.Form.Get("codeTex")
+	codeCompiled := r.Form.Get("codeCompiled")
+	if nameProgram == "" || user == "" || language == "" || codeTex == "" || codeCompiled == "" {
+		log.Fatal("Search query not found!")
+		return
+	}
 	p := Programs{
 		Uid:          "_:prog",
-		NameProgram:  "Program two",
-		CodeTex:      "import sys i=0 while i<10: print ('Hello') sys.stdout.flush() i=i+1 # time.sleep(1) n1 = 3 n2 = 10 suma = n1+n2 print('La suma es: ', suma)",
-		Language:     "tasdasdrue",
-		User:         "tasdasdrue",
-		CodeCompiled: "tasdasdrue",
+		NameProgram:  nameProgram,
+		CodeTex:      codeTex,
+		Language:     language,
+		User:         user,
+		CodeCompiled: codeCompiled,
 	}
 
 	op := &api.Operation{}
@@ -158,8 +168,6 @@ func (rs programsResource) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// Assigned uids for nodes which were created would be returned in the response.Uids map.
 	variables := map[string]string{"$id1": response.Uids["prog"]}
 	q := `query Create($id1: string){
 		create(func: uid($id1)) {
@@ -180,24 +188,51 @@ func (rs programsResource) Create(w http.ResponseWriter, r *http.Request) {
 	type Root struct {
 		Me []Programs `json:"me"`
 	}
-
-	// var r Root
 	err = json.Unmarshal(resp.Json, &r)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	out, _ := json.MarshalIndent(r, "", "\t")
-	fmt.Printf("%s\n", out)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(resp.Json))
 }
 
 func (rs programsResource) Update(w http.ResponseWriter, r *http.Request) {
+	dg, cancel := getDgraphClient()
+	defer cancel()
+	ctx := context.Background()
 
+	r.ParseForm()
+
+	uid := r.Form.Get("uid")
+	nameProgram := r.Form.Get("nameProgram")
+	user := r.Form.Get("user")
+	language := r.Form.Get("language")
+	codeTex := r.Form.Get("codeTex")
+	codeCompiled := r.Form.Get("codeCompiled")
+	if nameProgram == "" || user == "" || language == "" || codeTex == "" || codeCompiled == "" {
+		log.Fatal("Search query not found!")
+		return
+	}
+
+	query := `
+		query {
+			prog as var(func: uid(` + uid + `))
+		}`
+	mu := &api.Mutation{
+		SetNquads: []byte(` uid(prog)  <codeTex> "` + codeTex + `" . `),
+	}
+	req := &api.Request{
+		Query:     query,
+		Mutations: []*api.Mutation{mu},
+		CommitNow: true,
+	}
+	// Update email only if matching uid found.
+	resp, err := dg.NewTxn().Do(ctx, req)
+	if err != nil {
+		log.Fatal(err)
+	}
 	w.Header().Set("Content-Type", "application/json")
-	// w.Write([]byte(resp.Json))
-	w.Write([]byte("uodate"))
+	w.Write([]byte(resp.Json))
 }
 
 func (rs programsResource) Execute(w http.ResponseWriter, r *http.Request) {
@@ -218,7 +253,13 @@ func (rs programsResource) Execute(w http.ResponseWriter, r *http.Request) {
 	go copyOutput(stderr)
 	cmd.Wait()
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte("Excute program"))
+	result, _ := json.Marshal(responseData{
+		true,
+		200,
+		"objeto compilado",
+		"Compile",
+	})
+	io.WriteString(w, string(result))
 }
 
 //ejecutar programs
