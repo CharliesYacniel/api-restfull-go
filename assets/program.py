@@ -1,5 +1,3 @@
-#!/usr/local/bin/python
-# import time
 import sys
 i=0
 while i<10:

@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
 
 	"github.com/dgraph-io/dgo/v200"
@@ -20,6 +21,9 @@ import (
 
 type programsResource struct{}
 type CancelFunc func()
+
+var path = "./assets/program.py"
+
 type Programs struct {
 	Uid          string `json:"uid,omitempty"`
 	NameProgram  string `json:"nameProgram,omitempty"`
@@ -40,7 +44,7 @@ func (rs programsResource) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.Get("/getAll", rs.GetAll)
-	r.Get("/getById", rs.GetById)
+	r.Get("/getById/{ProgUid}", rs.GetById)
 	r.Post("/create", rs.Create)
 	r.Put("/update", rs.Update)
 	r.Post("/execute", rs.Execute)
@@ -79,6 +83,8 @@ func (rs programsResource) GetAll(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(resp.Json))
 }
@@ -88,12 +94,18 @@ func (rs programsResource) GetById(w http.ResponseWriter, r *http.Request) {
 	dg, cancel := getDgraphClient()
 	defer cancel()
 
+	ProgUid := chi.URLParam(r, "ProgUid")
+	// log.Fatal(ProgUid)
+	if ProgUid == "" {
+		log.Fatal("Search query not found!")
+		return
+	}
 	ctx := context.Background()
 
 	variables := make(map[string]string)
 	q := `
 	{
-		getByUid(func: uid("0x9c53")) {
+		getByUid(func: uid("` + ProgUid + `")) {
 		  uid
 		  nameProgram
 		  user
@@ -119,20 +131,29 @@ func (rs programsResource) GetById(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rs programsResource) Create(w http.ResponseWriter, r *http.Request) {
+
+	var p Programs
+	err := json.NewDecoder(r.Body).Decode(&p)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	dg, cancel := getDgraphClient()
 	defer cancel()
 
-	r.ParseForm()
-	nameProgram := r.Form.Get("nameProgram")
-	user := r.Form.Get("user")
-	language := r.Form.Get("language")
-	codeTex := r.Form.Get("codeTex")
-	codeCompiled := r.Form.Get("codeCompiled")
+	nameProgram := p.NameProgram
+	user := p.User
+	language := p.Language
+	codeTex := p.CodeTex
+	codeCompiled := p.CodeCompiled
+
 	if nameProgram == "" || user == "" || language == "" || codeTex == "" || codeCompiled == "" {
 		log.Fatal("Search query not found!")
 		return
 	}
-	p := Programs{
+
+	p = Programs{
 		Uid:          "_:prog",
 		NameProgram:  nameProgram,
 		CodeTex:      codeTex,
@@ -236,7 +257,25 @@ func (rs programsResource) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rs programsResource) Execute(w http.ResponseWriter, r *http.Request) {
-	cmd := exec.Command("python3", "./assets/game.py")
+
+	var p Programs
+	err := json.NewDecoder(r.Body).Decode(&p)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	codeTex := p.CodeTex
+	// fmt.Println(codeTex)
+
+	if codeTex == "" {
+		log.Fatal("NO SE ENCONTRO PARAMETRO")
+		return
+	}
+
+	crearArchivo()
+	escribeArchivo(codeTex)
+
+	cmd := exec.Command("python3", path)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		panic(err)
@@ -252,14 +291,58 @@ func (rs programsResource) Execute(w http.ResponseWriter, r *http.Request) {
 	go copyOutput(stdout)
 	go copyOutput(stderr)
 	cmd.Wait()
+
 	w.Header().Set("Content-Type", "application/json")
 	result, _ := json.Marshal(responseData{
 		true,
 		200,
-		"objeto compilado",
+		"asdasd",
 		"Compile",
 	})
 	io.WriteString(w, string(result))
+}
+
+func crearArchivo() {
+	//Verifica que el archivo existe
+	var _, err = os.Stat(path)
+	//Crea el archivo si no existe
+	if os.IsNotExist(err) {
+		var file, err = os.Create(path)
+		if existeError(err) {
+			return
+		}
+		defer file.Close()
+	}
+	fmt.Println("File Created Successfully", path)
+}
+func escribeArchivo(data string) {
+	// Abre archivo usando permisos READ & WRITE
+	var file, err = os.OpenFile(path, os.O_RDWR, 0644)
+	if existeError(err) {
+		return
+	}
+	defer file.Close()
+	// Escribe algo de texto linea por linea
+	_, err = file.WriteString(data)
+	if existeError(err) {
+		return
+	}
+	// _, err = file.WriteString("Mundo \n")
+	// if existeError(err) {
+	// 	return
+	// }
+	// Salva los cambios
+	err = file.Sync()
+	if existeError(err) {
+		return
+	}
+	fmt.Println("Archivo actualizado existosamente.")
+}
+func existeError(err error) bool {
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	return (err != nil)
 }
 
 //ejecutar programs
