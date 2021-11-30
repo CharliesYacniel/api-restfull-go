@@ -37,6 +37,7 @@ type responseData struct {
 	Status  bool   `json:"status"`
 	Code    int    `json:"code"`
 	Obj     string `json:"obj"`
+	Error   string `json:"error"`
 	Message string `json:"message"`
 }
 
@@ -290,13 +291,28 @@ func (rs programsResource) Execute(w http.ResponseWriter, r *http.Request) {
 	}
 	go copyOutput(stdout)
 	go copyOutput(stderr)
+	// scanner := bufio.NewScanner(stdout)
+	// fmt.Println(scanner.Text())
+	cadena := ""
+	cadenaError := ""
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		// fmt.Println(scanner.Text())
+		cadena = cadena + "\n" + scanner.Text()
+	}
+	scannerError := bufio.NewScanner(stderr)
+	for scannerError.Scan() {
+		// fmt.Println(scanner.Text())
+		cadenaError = cadenaError + "\n" + scannerError.Text()
+	}
 	cmd.Wait()
 
 	w.Header().Set("Content-Type", "application/json")
 	result, _ := json.Marshal(responseData{
 		true,
 		200,
-		"asdasd",
+		cadena,
+		cadenaError,
 		"Compile",
 	})
 	io.WriteString(w, string(result))
